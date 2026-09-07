@@ -59,6 +59,7 @@ end
 
 local stale = true
 local native_reads = 0
+local gui_reads = 0
 local player = {
     GetBuffs=function() native_reads=native_reads+1; return {} end,
     GetExpCurrent=function()
@@ -70,7 +71,10 @@ local player = {
     GetExpNeeded=function() native_reads=native_reads+1; return 1000 end,
 }
 AshitaCore = {
-    GetGuiManager=function() return { GetVisible=function() return true end } end,
+    GetGuiManager=function()
+        gui_reads = gui_reads + 1
+        return { GetVisible=function() return true end }
+    end,
     GetMemoryManager=function()
         native_reads = native_reads + 1
         return { GetPlayer=function() native_reads=native_reads+1; return player end }
@@ -143,4 +147,17 @@ callbacks.packet_in({ id=0x02D, data_modified=string.char(unpack(bytes)) })
 rendered_text = {}
 callbacks.d3d_present()
 assert(not table.concat(rendered_text, ' '):find('Last: 999', 1, true), 'foreign actor EXP was recorded')
+
+local begins_before_logout = began
+local native_before_logout = native_reads
+local gui_before_logout = gui_reads
+callbacks.packet_in({ id=0x00B, data_modified='' })
+callbacks.d3d_present()
+assert(began == begins_before_logout, 'logout frame opened an ImGui window')
+assert(native_reads == native_before_logout, 'logout frame touched player memory')
+assert(gui_reads == gui_before_logout, 'logout frame touched the GUI manager')
+
+callbacks.packet_in({ id=0x00A, data_modified='' })
+callbacks.d3d_present()
+assert(began == begins_before_logout + 1, 'zone-enter packet did not resume rendering')
 print('PASS: d3d_present renders cached state without player-memory reads')

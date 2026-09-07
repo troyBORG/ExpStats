@@ -1,6 +1,6 @@
 addon.name      = 'ExpStats';
 addon.author    = 'troyBORG';
-addon.version   = '0.8.2';
+addon.version   = '0.8.3';
 addon.desc      = 'Displays EXP pace, recent gains, time to level, and EXP earned while Dedication is active.';
 addon.link      = 'Pending HorizonXI Community Team review';
 
@@ -38,6 +38,10 @@ local native_ui_hidden = false;
 local transition_until = (ashita.time.clock().ms / 1000) + 2;
 local active_server_id = nil;
 local cached_remaining = nil;
+-- The settings library already tracks login/logout from 0x00A/0x00B. Reuse
+-- that packet-owned state so a manual reload in-world renders immediately
+-- without probing native player objects here.
+local world_active = settings.logged_in == true;
 
 settings.register('settings', 'settings_update', function (s)
     if s ~= nil then
@@ -144,6 +148,13 @@ ashita.events.register('packet_in', 'expstats_packet_in', function (e)
         transition_until = now() + 2;
         cached_remaining = nil;
         first_position = true;
+        world_active = true;
+        return;
+    end
+    -- 0x00B is sent before zoning out or logging out. Stop all ImGui and GUI
+    -- manager work immediately; the next 0x00A re-enables rendering.
+    if e.id == 0x00B then
+        world_active = false;
         return;
     end
     if e.id ~= 0x02D then return; end
@@ -229,6 +240,7 @@ ashita.events.register('command', 'expstats_command', function (e)
 end);
 
 ashita.events.register('d3d_present', 'expstats_present', function ()
+    if not world_active then return; end
     if not config.visible or native_ui_hidden or not ashita_ui_visible() then return; end
     -- Rendering uses only Lua-owned cached values. Never dereference player
     -- memory from d3d_present, including while leaving a zone before 0x00A.
